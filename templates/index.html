@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Kitchen</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-light">
+
+
+    <div id="app" class="container py-4">
+        {% raw %}
+        
+        <header class="mb-4 border-bottom pb-3">
+            <h1 class="display-5 text-primary">🍽️ 
+                Smart Kitchen
+                <div class="scaled-container">
+                <div class="raz">
+                    <div class="d-flex align-items-center ms-3">
+                        <span class="theme-label">☀️</span>
+                        <label class="theme-switch">
+                        <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+                        <span class="theme-slider"></span>
+                        </label>
+                        <span class="theme-label">🌙</span>
+                    </div>
+                </div>
+                </div>
+            </h1>
+            <ul class="nav nav-pills mt-3">
+                <li class="nav-item"><a class="nav-link" :class="{active: view === 'recipes'}" @click="view='recipes'">Рецепты</a></li>
+                <li class="nav-item"><a class="nav-link" :class="{active: view === 'inventory'}" @click="view='inventory'">Запасы</a></li>
+                <li class="nav-item"><a class="nav-link" :class="{active: view === 'menu'}" @click="view='menu'">План Меню</a></li>
+                <li class="nav-item"><a class="nav-link" :class="{active: view === 'shopping'}" @click="view='shopping'">Список Покупок</a></li>
+                <li class="nav-item"><a class="nav-link" :class="{active: view === 'suggestions'}" @click="loadSuggestions()">Что приготовить?</a></li>
+            </ul>
+        </header>
+
+        <!-- индикаторы загрузки -->
+        <div v-if="loading" class="text-center my-5"><div class="spinner-border text-primary"></div></div>
+
+        <!-- каталог рецептов с поиском -->
+        <div v-else-if="view === 'recipes'">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3>Каталог рецептов</h3>
+                <button class="btn btn-success" @click="showAddRecipeModal = true">+ Добавить рецепт</button>
+            </div>
+            
+            <!-- Поиск по рецептам -->
+            <div class="card p-3 mb-4 bg-white shadow-sm">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="search-container">
+                            <span class="search-icon">🔍</span>
+                            <input 
+                                v-model="searchQuery" 
+                                type="text" 
+                                class="form-control search-input" 
+                                placeholder="Поиск рецептов по названию, описанию или ингредиентам..."
+                                @input="handleSearch"
+                            >
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <select v-model="searchFilter" class="form-select" @change="handleSearch">
+                            <option value="all">Все поля</option>
+                            <option value="name">Название</option>
+                            <option value="description">Описание</option>
+                            <option value="ingredients">Ингредиенты</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-secondary w-100" @click="clearSearch" :disabled="!searchQuery">
+                            Очистить
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <small class="search-results-count">
+                        Найдено рецептов: {{ filteredRecipes.length }} из {{ recipes.length }}
+                    </small>
+                </div>
+            </div>
+
+            <!-- Список рецептов -->
+            <div v-if="filteredRecipes.length > 0" class="row row-cols-1 row-cols-md-3 g-4">
+                <div class="col" v-for="recipe in filteredRecipes" :key="recipe.id">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ recipe.name }}</h5>
+                            <p class="card-text small text-muted">{{ recipe.description }}</p>
+                            <div class="mb-2">
+                                <h6>Ингредиенты:</h6>
+                                <ul class="list-unstyled small">
+                                    <li v-for="ing in recipe.ingredients">
+                                        • {{ ing.name }} - {{ ing.amount }} {{ ing.unit }}
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-primary btn-sm" @click="viewRecipeDetails(recipe)">Подробнее</button>
+                                <button class="btn btn-outline-danger btn-sm" @click="deleteRecipe(recipe.id)">Удалить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Сообщение, если ничего не найдено -->
+            <div v-else-if="searchQuery" class="no-results">
+                <h5>Рецепты не найдены</h5>
+                <p class="text-muted">Попробуйте изменить поисковый запрос или очистить фильтр</p>
+                <button class="btn btn-primary" @click="clearSearch">Показать все рецепты</button>
+            </div>
+
+            <!-- Модалка добавления рецепта -->
+            <div v-if="showAddRecipeModal" class="modal d-block" style="background: rgba(0,0,0,0.5)">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Новый рецепт</h5>
+                            <button type="button" class="btn-close" @click="showAddRecipeModal = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input v-model="newRecipe.name" class="form-control mb-2" placeholder="Название блюда">
+                            <textarea v-model="newRecipe.description" class="form-control mb-2" placeholder="Описание"></textarea>
+                            <textarea v-model="newRecipe.instructions" class="form-control mb-2" placeholder="Инструкция приготовления"></textarea>
+                            
+                            <h6>Ингредиенты</h6>
+                            <div v-for="(ing, idx) in newRecipe.ingredients" :key="idx" class="d-flex gap-2 mb-2">
+                                <input v-model="ing.name" placeholder="Продукт" class="form-control">
+                                <input v-model.number="ing.amount" placeholder="Кол-во" type="number" min="0" class="form-control" style="width: 100px">
+                                <input v-model="ing.unit" placeholder="Ед.изм" class="form-control" style="width: 80px">
+                                <button class="btn btn-danger" @click="newRecipe.ingredients.splice(idx, 1)">X</button>
+                            </div>
+                            <button class="btn btn-sm btn-secondary" @click="addIngredientLine">+ Ингредиент</button>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-primary" @click="createRecipe">Сохранить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модалка с деталями рецепта -->
+            <div v-if="showRecipeModal" class="modal d-block" style="background: rgba(0,0,0,0.5)">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">{{ selectedRecipe.name }}</h5>
+                            <button type="button" class="btn-close" @click="showRecipeModal = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="text-muted mb-3">{{ selectedRecipe.description }}</p>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-primary">Ингредиенты:</h6>
+                                    <ul class="list-group">
+                                        <li v-for="ing in selectedRecipe.ingredients" class="list-group-item d-flex justify-content-between">
+                                            <span>{{ ing.name }}</span>
+                                            <span class="text-muted">{{ ing.amount }} {{ ing.unit }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-primary">Инструкция приготовления:</h6>
+                                    <div class="recipe-instructions bg-light p-3 rounded">
+                                        {{ selectedRecipe.instructions }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @click="showRecipeModal = false">Закрыть</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- блок запасов -->
+        <div v-else-if="view === 'inventory'">
+        <h3>Мои запасы</h3>
+        <div class="card p-3 mb-3 inventory-card shadow-sm">
+            <div class="d-flex gap-2">
+                <input v-model="newInventory.name" placeholder="Название (напр. Яйца)" class="form-control">
+                <input v-model.number="newInventory.amount" type="number" placeholder="Кол-во" class="form-control">
+                <input v-model="newInventory.unit" placeholder="Ед. (шт/кг)" class="form-control">
+                <button class="btn btn-primary" @click="addInventory">Добавить</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="table table-hover inventory-table shadow-sm rounded">
+                <thead class="inventory-thead">
+                    <tr>
+                        <th>Продукт</th>
+                        <th>Количество</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="item in inventory" :key="item.id" class="inventory-row">
+                        <td class="inventory-name">{{ item.name }}</td>
+                        <td class="inventory-amount">{{ item.amount }} {{ item.unit }}</td>
+                        <td class="inventory-actions">
+                            <button class="btn btn-danger btn-sm" @click="deleteInventory(item.id)">Удалить</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+        <!-- план меню -->
+        <div v-else-if="view === 'menu'">
+            <h3>План питания</h3>
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <label>Дата</label>
+                    <input type="date" v-model="menuForm.date" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <label>Прием пищи</label>
+                    <select v-model="menuForm.meal_type" class="form-select">
+                        <option>Завтрак</option><option>Обед</option><option>Ужин</option><option>Перекус</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>Блюдо</label>
+                    <select v-model="menuForm.recipe_id" class="form-select">
+                        <option v-for="r in recipes" :value="r.id">{{ r.name }}</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label>Порций</label>
+                    <input type="number" v-model.number="menuForm.servings" class="form-control" min="1">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" @click="addToMenu">+</button>
+                </div>
+            </div>
+
+            <div v-for="(items, date) in groupedMenu" :key="date" class="mb-3">
+                <h5 class="bg-secondary text-white p-2 rounded">{{ date }}</h5>
+                <div class="list-group">
+                    <div v-for="item in items" :key="item.id" class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ item.meal_type }}:</strong> {{ item.recipe.name }} 
+                            <span class="badge bg-info rounded-pill">{{ item.servings }} порц.</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" @click="deleteMenuItem(item.id)">X</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- список покупок -->
+        <div v-else-if="view === 'shopping'">
+            <h3>Генерация списка покупок</h3>
+            <div class="card p-3 mb-4 bg-white shadow-sm">
+                <div class="row align-items-end">
+                    <div class="col">
+                        <label>Начало периода</label>
+                        <input type="date" v-model="shoppingDates.start" class="form-control">
+                    </div>
+                    <div class="col">
+                        <label>Конец периода</label>
+                        <input type="date" v-model="shoppingDates.end" class="form-control">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-primary" @click="generateShoppingList">Рассчитать</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="shoppingList.length > 0">
+                <ul class="list-group shadow-sm">
+                    <li v-for="item in shoppingList" class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-0">{{ item.name }}</h5>
+                            <small class="text-muted">
+                                Нужно: {{ item.needed }} | Есть: {{ item.in_stock }}
+                            </small>
+                        </div>
+                        <span class="badge bg-danger fs-6">
+                            Купить: {{ item.to_buy }} {{ item.unit }}
+                        </span>
+                    </li>
+                </ul>
+            </div>
+            <div v-else-if="shoppingListGenerated" class="alert alert-success">
+                Всё есть! Покупать ничего не нужно.
+            </div>
+        </div>
+
+        <!-- подборка рецептов -->
+        <div v-else-if="view === 'suggestions'">
+            <h3>Что можно приготовить?</h3>
+            <p class="text-muted">На основе продуктов в "Запасах"</p>
+            
+            <div class="row row-cols-1 row-cols-md-2 g-4">
+                <div class="col" v-for="sug in suggestions" :key="sug.recipe.id">
+                    <div class="card h-100 border-0 shadow-sm" :class="{'border-success border-2': sug.match_percentage === 100}">
+                        <div class="card-header d-flex justify-content-between">
+                            <span class="fw-bold">{{ sug.recipe.name }}</span>
+                            <span class="badge" :class="sug.match_percentage === 100 ? 'bg-success' : 'bg-warning'">
+                                {{ sug.match_percentage }}% совпадения
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <div v-if="sug.missing_ingredients.length > 0">
+                                <small class="text-danger fw-bold">Не хватает:</small>
+                                <ul class="mb-0 small">
+                                    <li v-for="miss in sug.missing_ingredients">{{ miss }}</li>
+                                </ul>
+                            </div>
+                            <div v-else class="text-success fw-bold">
+                                Можно готовить прямо сейчас!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div v-if="suggestions.length === 0">
+                <div class="special-div"> 
+                    <div class="title">
+                        Нет подходящих рецептов. Попробуйте добавить продукты в запасы.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        {% endraw %}
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/theme.js"></script>
+</body>
+</html>
